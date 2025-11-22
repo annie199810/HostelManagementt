@@ -2,7 +2,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 
-var API_BASE = "http://localhost:5000";
+//var API_BASE = "http://localhost:5000";
+var API_URL = import.meta.env.VITE_API_BASE_URL + "/api/users";
+
 
 function StatusBadge(props) {
   var v = props.value || "";
@@ -59,7 +61,7 @@ export default function UserManagementPage() {
         }
       })
       .catch(function (err) {
-        console.error("Error loading users", err);
+       // console.error("Error loading users", err);
         setError("Cannot reach server");
       })
       .finally(function () {
@@ -163,7 +165,7 @@ export default function UserManagementPage() {
           }
         })
         .catch(function (err) {
-          console.error("Error creating user", err);
+         // console.error("Error creating user", err);
           alert("Server error while creating user");
         });
     } else {
@@ -185,7 +187,7 @@ export default function UserManagementPage() {
           }
         })
         .catch(function (err) {
-          console.error("Error updating user", err);
+         // console.error("Error updating user", err);
           alert("Server error while updating user");
         });
     }
@@ -214,7 +216,7 @@ export default function UserManagementPage() {
         }
       })
       .catch(function (err) {
-        console.error("Error deleting user", err);
+        //console.error("Error deleting user", err);
         alert("Server error while deleting user");
       });
   }

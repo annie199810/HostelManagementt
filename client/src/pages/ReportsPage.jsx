@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 
-const API_BASE = "http://localhost:5000/api";
+//const API_BASE = "http://localhost:5000/api";
+var API_URL = import.meta.env.VITE_API_BASE_URL + "/api/reports";
 
 function formatCurrency(v) {
   if (!v) return "₹0";
@@ -59,7 +60,7 @@ export default function ReportsPage() {
           : [];
         setMaintenance(maintData);
       } catch (err) {
-        console.error("Error loading reports data:", err);
+       // console.error("Error loading reports data:", err);
         setError("Failed to load reports data");
       } finally {
         setLoading(false);

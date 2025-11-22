@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 
-var API_URL = "http://localhost:5000/api/billing";
+var API_URL = import.meta.env.VITE_API_BASE_URL + "/api/billing";
+
 
 function formatCurrency(amount) {
   if (!amount) return "₹0";
@@ -58,7 +59,7 @@ export default function BillingPage() {
         var list = data.payments || [];
         setPayments(list);
       } catch (err) {
-        console.error("Error loading billing", err);
+       // console.error("Error loading billing", err);
         if (!isMounted) return;
         setError("Failed to load billing records.");
       } finally {
@@ -161,7 +162,7 @@ export default function BillingPage() {
       var data = await res.json();
 
       if (!res.ok || !data.ok) {
-        console.error("Billing save failed:", data);
+       // console.error("Billing save failed:", data);
         alert("Failed to save payment.");
         return;
       }
@@ -172,7 +173,7 @@ export default function BillingPage() {
 
       setShowForm(false);
     } catch (err) {
-      console.error("Error saving payment", err);
+      //console.error("Error saving payment", err);
       alert("Error saving payment.");
     }
   }

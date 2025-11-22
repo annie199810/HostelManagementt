@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 
-var API_BASE = "http://localhost:5000";
+//var API_BASE = "http://localhost:5000";
+var API_URL = import.meta.env.VITE_API_BASE_URL + "/api/residents";
 
 function StatusBadge(props) {
   var v = props.value || "";
@@ -43,7 +44,7 @@ export default function ResidentsPage() {
       try {
         setLoading(true);
         setError("");
-        var res = await fetch(API_BASE + "/api/residents");
+        var res = await fetch(API_URL + "/api/residents");
         var json = await res.json();
         if (!json.ok) {
           setError(json.error || "Failed to load residents");
@@ -51,7 +52,7 @@ export default function ResidentsPage() {
         }
         setItems(json.residents || []);
       } catch (err) {
-        console.error("Load residents error", err);
+      //  console.error("Load residents error", err);
         setError("Failed to load residents");
       } finally {
         setLoading(false);
@@ -124,7 +125,7 @@ export default function ResidentsPage() {
 
     try {
       if (formMode === "add") {
-        var resAdd = await fetch(API_BASE + "/api/residents", {
+        var resAdd = await fetch(API_URL + "/api/residents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -148,7 +149,7 @@ export default function ResidentsPage() {
       } else {
         var id = formData._id;
 
-        var resEdit = await fetch(API_BASE + "/api/residents/" + id, {
+        var resEdit = await fetch(API_URL + "/api/residents/" + id, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -178,7 +179,7 @@ export default function ResidentsPage() {
 
       setShowForm(false);
     } catch (err) {
-      console.error("Save resident error", err);
+     // console.error("Save resident error", err);
       alert("Failed to save resident");
     }
   }
@@ -187,7 +188,7 @@ export default function ResidentsPage() {
     if (!window.confirm("Delete resident " + row.name + "?")) return;
 
     try {
-      var res = await fetch(API_BASE + "/api/residents/" + row._id, {
+      var res = await fetch(API_URL + "/api/residents/" + row._id, {
         method: "DELETE",
       });
       var json = await res.json();
@@ -202,7 +203,7 @@ export default function ResidentsPage() {
         });
       });
     } catch (err) {
-      console.error("Delete resident error", err);
+     // console.error("Delete resident error", err);
       alert("Failed to delete resident");
     }
   }

@@ -2,7 +2,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Card from "../components/Card";
 
-var API_BASE = "http://localhost:5000";
+var API_BASE = import.meta.env.VITE_API_BASE_URL;
+
 
 function formatCurrency(amount) {
   if (!amount) return "₹0";
@@ -51,7 +52,7 @@ export default function DashboardPage() {
         setBills(billRes.bills || []); 
       })
       .catch(function (err) {
-        console.error("Dashboard load error:", err);
+       // console.error("Dashboard load error:", err);
         setError("Failed to load dashboard data.");
       })
       .finally(function () {

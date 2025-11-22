@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 
+// 👇 ADD THIS
+var API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
 function StatusBadge(props) {
   var v = props.value || "";
   var cls =
@@ -54,21 +57,22 @@ export default function MaintenancePage() {
     reportedOn: "",
   });
 
-  
+  // ⬇⬇ CHANGED: use API_BASE instead of localhost
   useEffect(function () {
-    fetch("http://localhost:5000/api/maintenance")
-      .then((res) => res.json())
-      .then((data) => {
+    fetch(API_BASE + "/api/maintenance")
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
         setItems(data.requests || []);
         setLoading(false);
       })
-      .catch((err) => {
-        console.error("Error loading maintenance:", err);
+      .catch(function (err) {
+        //console.error("Error loading maintenance:", err);
         setLoading(false);
       });
   }, []);
 
-  
   var filteredItems = useMemo(
     function () {
       var text = search.toLowerCase();
@@ -92,7 +96,6 @@ export default function MaintenancePage() {
     [items, search, statusFilter, priorityFilter]
   );
 
-  
   function openAddForm() {
     setFormMode("add");
     setFormData({
@@ -131,44 +134,52 @@ export default function MaintenancePage() {
       reportedOn: formData.reportedOn,
     };
 
-    fetch("http://localhost:5000/api/maintenance", {
+    // ⬇⬇ CHANGED: use API_BASE instead of localhost
+    fetch(API_BASE + "/api/maintenance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
-      .then((res) => res.json())
-      .then((data) => {
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
         if (data.ok) {
           setItems(function (prev) {
             return [data.request].concat(prev);
           });
           setShowForm(false);
+        } else {
+          alert("Failed to create maintenance request");
         }
       })
-      .catch((err) => {
-        console.error("Error creating maintenance:", err);
+      .catch(function (err) {
+       // console.error("Error creating maintenance:", err);
+        alert("Failed to create maintenance request");
       });
   }
 
- 
   function handleDelete(row) {
     if (!window.confirm("Delete request for room " + row.roomNumber + "?"))
       return;
 
+    // (still local-only delete)
     setItems(function (prev) {
-      return prev.filter((r) => r._id !== row._id);
+      return prev.filter(function (r) {
+        return r._id !== row._id;
+      });
     });
   }
 
   function handleMarkDone(row) {
+    // (still local-only status change)
     setItems(function (prev) {
-      return prev.map((r) =>
-        r._id === row._id ? { ...r, status: "Closed" } : r
-      );
+      return prev.map(function (r) {
+        return r._id === row._id ? { ...r, status: "Closed" } : r;
+      });
     });
   }
 
- 
   return (
     <main className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -187,20 +198,23 @@ export default function MaintenancePage() {
           <p className="p-4 text-gray-600">Loading...</p>
         ) : (
           <>
-            
             <div className="flex gap-3 mb-4">
               <input
                 type="text"
                 placeholder="Search..."
                 className="border px-3 py-2 rounded text-sm flex-1"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={function (e) {
+                  setSearch(e.target.value);
+                }}
               />
 
               <select
                 className="border px-3 py-2 rounded text-sm"
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={function (e) {
+                  setStatusFilter(e.target.value);
+                }}
               >
                 <option value="all">All Status</option>
                 <option value="Open">Open</option>
@@ -211,7 +225,9 @@ export default function MaintenancePage() {
               <select
                 className="border px-3 py-2 rounded text-sm"
                 value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
+                onChange={function (e) {
+                  setPriorityFilter(e.target.value);
+                }}
               >
                 <option value="all">All Priority</option>
                 <option value="High">High</option>
@@ -220,7 +236,6 @@ export default function MaintenancePage() {
               </select>
             </div>
 
-           
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-gray-50">
@@ -236,40 +251,49 @@ export default function MaintenancePage() {
               </thead>
 
               <tbody>
-                {filteredItems.map((row) => (
-                  <tr key={row._id} className="border-t">
-                    <td className="px-3 py-2">{row.roomNumber}</td>
-                    <td className="px-3 py-2">{row.issue}</td>
-                    <td className="px-3 py-2">{row.type}</td>
-                    <td className="px-3 py-2">
-                      <PriorityBadge value={row.priority} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <StatusBadge value={row.status} />
-                    </td>
-                    <td className="px-3 py-2">{row.reportedBy}</td>
-                    <td className="px-3 py-2">{row.reportedOn}</td>
-                    <td className="px-3 py-2 text-right space-x-2">
-                      <button
-                        onClick={() => handleMarkDone(row)}
-                        className="text-green-600 text-xs"
-                      >
-                        Mark Done
-                      </button>
+                {filteredItems.map(function (row) {
+                  return (
+                    <tr key={row._id} className="border-t">
+                      <td className="px-3 py-2">{row.roomNumber}</td>
+                      <td className="px-3 py-2">{row.issue}</td>
+                      <td className="px-3 py-2">{row.type}</td>
+                      <td className="px-3 py-2">
+                        <PriorityBadge value={row.priority} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <StatusBadge value={row.status} />
+                      </td>
+                      <td className="px-3 py-2">{row.reportedBy}</td>
+                      <td className="px-3 py-2">{row.reportedOn}</td>
+                      <td className="px-3 py-2 text-right space-x-2">
+                        <button
+                          onClick={function () {
+                            handleMarkDone(row);
+                          }}
+                          className="text-green-600 text-xs"
+                        >
+                          Mark Done
+                        </button>
 
-                      <button
-                        onClick={() => handleDelete(row)}
-                        className="text-red-600 text-xs"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <button
+                          onClick={function () {
+                            handleDelete(row);
+                          }}
+                          className="text-red-600 text-xs"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {filteredItems.length === 0 && (
                   <tr>
-                    <td colSpan="8" className="px-3 py-4 text-center text-gray-500">
+                    <td
+                      colSpan="8"
+                      className="px-3 py-4 text-center text-gray-500"
+                    >
                       No maintenance requests found.
                     </td>
                   </tr>
@@ -280,11 +304,12 @@ export default function MaintenancePage() {
         )}
       </Card>
 
-      
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-20">
           <div className="bg-white rounded-lg p-6 w-full max-w-xl">
-            <h3 className="text-xl font-semibold mb-4">New Maintenance Request</h3>
+            <h3 className="text-xl font-semibold mb-4">
+              New Maintenance Request
+            </h3>
 
             <form onSubmit={handleFormSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -293,7 +318,9 @@ export default function MaintenancePage() {
                   placeholder="Room Number"
                   className="border px-3 py-2 rounded"
                   value={formData.roomNumber}
-                  onChange={(e) => handleFormChange("roomNumber", e.target.value)}
+                  onChange={function (e) {
+                    handleFormChange("roomNumber", e.target.value);
+                  }}
                 />
 
                 <input
@@ -301,7 +328,9 @@ export default function MaintenancePage() {
                   placeholder="Reported By"
                   className="border px-3 py-2 rounded"
                   value={formData.reportedBy}
-                  onChange={(e) => handleFormChange("reportedBy", e.target.value)}
+                  onChange={function (e) {
+                    handleFormChange("reportedBy", e.target.value);
+                  }}
                 />
               </div>
 
@@ -310,14 +339,18 @@ export default function MaintenancePage() {
                 placeholder="Issue Title"
                 className="border px-3 py-2 rounded w-full"
                 value={formData.issue}
-                onChange={(e) => handleFormChange("issue", e.target.value)}
+                onChange={function (e) {
+                  handleFormChange("issue", e.target.value);
+                }}
               />
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <select
                   className="border px-3 py-2 rounded"
                   value={formData.type}
-                  onChange={(e) => handleFormChange("type", e.target.value)}
+                  onChange={function (e) {
+                    handleFormChange("type", e.target.value);
+                  }}
                 >
                   <option value="Plumbing">Plumbing</option>
                   <option value="Electrical">Electrical</option>
@@ -328,7 +361,9 @@ export default function MaintenancePage() {
                 <select
                   className="border px-3 py-2 rounded"
                   value={formData.priority}
-                  onChange={(e) => handleFormChange("priority", e.target.value)}
+                  onChange={function (e) {
+                    handleFormChange("priority", e.target.value);
+                  }}
                 >
                   <option value="High">High</option>
                   <option value="Medium">Medium</option>
@@ -338,7 +373,9 @@ export default function MaintenancePage() {
                 <select
                   className="border px-3 py-2 rounded"
                   value={formData.status}
-                  onChange={(e) => handleFormChange("status", e.target.value)}
+                  onChange={function (e) {
+                    handleFormChange("status", e.target.value);
+                  }}
                 >
                   <option value="Open">Open</option>
                   <option value="In-progress">In-progress</option>
@@ -350,13 +387,17 @@ export default function MaintenancePage() {
                 type="date"
                 className="border px-3 py-2 rounded"
                 value={formData.reportedOn}
-                onChange={(e) => handleFormChange("reportedOn", e.target.value)}
+                onChange={function (e) {
+                  handleFormChange("reportedOn", e.target.value);
+                }}
               />
 
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={function () {
+                    setShowForm(false);
+                  }}
                   className="px-4 py-2 border rounded"
                 >
                   Cancel

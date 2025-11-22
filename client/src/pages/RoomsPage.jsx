@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "../components/Card";
 
-var API_BASE = "http://localhost:5000";
+//var API_BASE = "http://localhost:5000";
+var API_URL = import.meta.env.VITE_API_BASE_URL + "/api/rooms";
 
 function StatusBadge(props) {
   var v = props.value || "";
@@ -57,7 +58,7 @@ export default function RoomsPage() {
 
       setRooms(json.rooms || []);
     } catch (err) {
-      console.error("Error loading rooms:", err);
+    //  console.error("Error loading rooms:", err);
       setError("Failed to load rooms. Please try again.");
     } finally {
       setLoading(false);
@@ -171,7 +172,7 @@ export default function RoomsPage() {
       
       loadRooms();
     } catch (err) {
-      console.error("Assign error:", err);
+     // console.error("Assign error:", err);
       alert("Failed to assign room. See console for details.");
     }
   }
@@ -193,7 +194,7 @@ export default function RoomsPage() {
 
       loadRooms();
     } catch (err) {
-      console.error("Checkout error:", err);
+     // console.error("Checkout error:", err);
       alert("Failed to checkout room. See console for details.");
     }
   }
