@@ -1,9 +1,10 @@
-
-
+// index.js - paste/replace your existing server entry with this
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const Room = require("./models/Room");
 const Resident = require("./models/Resident");
@@ -13,24 +14,31 @@ const User = require("./models/User");
 
 const app = express();
 
+const CLIENT_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://johnshostel.netlify.app", 
+  
+];
 
-app.use(function (req, res, next) {
-  console.log(
-    "[REQ]",
-    req.method,
-    req.url,
-    "| Origin:",
-    req.headers.origin || "(no origin header)"
-  );
-  next();
-});
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); 
+    if (CLIENT_ORIGINS.indexOf(origin) !== -1) callback(null, true);
+    else callback(null, true); 
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
 
-
-app.use(cors());
-
-
+app.use(cors(corsOptions));
 app.use(express.json());
 
+app.use(function (req, res, next) {
+  console.log("[REQ]", req.method, req.url, "| Origin:", req.headers.origin || "(no origin)");
+  next();
+});
 
 
 mongoose
@@ -43,11 +51,125 @@ mongoose
   });
 
 
+const JWT_SECRET = process.env.JWT_SECRET || "please_set_a_secret";
+
+async function hashPassword(plain) {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(plain, salt);
+}
+
+function createToken(user) {
+  const payload = {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+}
+
+function safeUser(userDoc) {
+  if (!userDoc) return null;
+  const user = userDoc.toObject ? userDoc.toObject() : { ...userDoc };
+  delete user.password;
+  return user;
+}
+
+function verifyToken(req, res, next) {
+  const auth = req.headers.authorization || req.headers.Authorization || "";
+  const match = String(auth).match(/^Bearer (.+)$/i);
+  if (!match) {
+    return res.status(401).json({ ok: false, error: "Missing auth token" });
+  }
+  const token = match[1];
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch (err) {
+    return res.status(401).json({ ok: false, error: "Invalid or expired token" });
+  }
+}
+
+
+app.post("/api/auth/register", async function (req, res) {
+  try {
+    const body = req.body || {};
+    const { name, email, password, role = "Staff", status = "Active" } = body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ ok: false, error: "Name, email and password are required" });
+    }
+
+    
+    const exists = await User.findOne({ email: String(email).toLowerCase() });
+    if (exists) {
+      return res.status(409).json({ ok: false, error: "Email already exists" });
+    }
+
+    const hashed = await hashPassword(String(password));
+    const user = await User.create({
+      name,
+      email: String(email).toLowerCase(),
+      password: hashed,
+      role,
+      status,
+    });
+
+    const token = createToken(user);
+    res.status(201).json({ ok: true, user: safeUser(user), token });
+  } catch (err) {
+    console.error("Error in /api/auth/register:", err);
+    res.status(500).json({ ok: false, error: "Failed to register user" });
+  }
+});
+
+
+app.post("/api/auth/login", async function (req, res) {
+  try {
+    const body = req.body || {};
+    const { email, password } = body;
+    if (!email || !password) {
+      return res.status(400).json({ ok: false, error: "Email and password required" });
+    }
+
+    const user = await User.findOne({ email: String(email).toLowerCase() });
+    if (!user) {
+      return res.status(401).json({ ok: false, error: "Invalid credentials" });
+    }
+
+    const ok = await bcrypt.compare(String(password), user.password || "");
+    if (!ok) {
+      return res.status(401).json({ ok: false, error: "Invalid credentials" });
+    }
+
+    const token = createToken(user);
+    res.json({ ok: true, user: safeUser(user), token });
+  } catch (err) {
+    console.error("Error in /api/auth/login:", err);
+    res.status(500).json({ ok: false, error: "Failed to login" });
+  }
+});
+
+
+app.get("/api/me", verifyToken, async function (req, res) {
+  try {
+    const id = req.user && req.user.id;
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ ok: false, error: "User not found" });
+    res.json({ ok: true, user: safeUser(user) });
+  } catch (err) {
+    console.error("Error /api/me:", err);
+    res.status(500).json({ ok: false, error: "Failed to load user" });
+  }
+});
+
 
 app.get("/api/users", async function (req, res) {
   try {
     var data = await User.find().sort({ createdAt: -1 });
-    res.json({ ok: true, users: data });
+    const users = data.map(safeUser);
+    res.json({ ok: true, users: users });
   } catch (err) {
     console.error("Error loading users:", err);
     res.status(500).json({ ok: false, error: "Failed to load users" });
@@ -70,22 +192,22 @@ app.post("/api/users", async function (req, res) {
       });
     }
 
+    const hashed = await hashPassword(String(password));
+
     var user = await User.create({
       name: name,
-      email: email,
-      password: password,
+      email: String(email).toLowerCase(),
+      password: hashed,
       role: role,
       status: status,
     });
 
-    res.status(201).json({ ok: true, user: user });
+    res.status(201).json({ ok: true, user: safeUser(user) });
   } catch (err) {
     console.error("Error creating user:", err);
 
     if (err && err.code === 11000) {
-      return res
-        .status(409)
-        .json({ ok: false, error: "Email already exists" });
+      return res.status(409).json({ ok: false, error: "Email already exists" });
     }
 
     res.status(500).json({ ok: false, error: "Failed to create user" });
@@ -99,10 +221,10 @@ app.put("/api/users/:id", async function (req, res) {
     var updates = {};
 
     if (body.name != null) updates.name = body.name;
-    if (body.email != null) updates.email = body.email;
+    if (body.email != null) updates.email = String(body.email).toLowerCase();
     if (body.role != null) updates.role = body.role;
     if (body.status != null) updates.status = body.status;
-    if (body.password) updates.password = body.password;
+    if (body.password) updates.password = await hashPassword(String(body.password));
 
     var user = await User.findByIdAndUpdate(id, updates, { new: true });
 
@@ -110,14 +232,12 @@ app.put("/api/users/:id", async function (req, res) {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    res.json({ ok: true, user: user });
+    res.json({ ok: true, user: safeUser(user) });
   } catch (err) {
     console.error("Error updating user:", err);
 
     if (err && err.code === 11000) {
-      return res
-        .status(409)
-        .json({ ok: false, error: "Email already exists" });
+      return res.status(409).json({ ok: false, error: "Email already exists" });
     }
 
     res.status(500).json({ ok: false, error: "Failed to update user" });
@@ -141,16 +261,13 @@ app.delete("/api/users/:id", async function (req, res) {
 });
 
 
-
 app.get("/api/billing", async function (req, res) {
   try {
     var data = await Billing.find().sort({ createdAt: -1 });
     res.json({ ok: true, payments: data });
   } catch (err) {
     console.error("Error fetching billing records", err);
-    res
-      .status(500)
-      .json({ ok: false, error: "Failed to load billing records" });
+    res.status(500).json({ ok: false, error: "Failed to load billing records" });
   }
 });
 
@@ -183,12 +300,9 @@ app.post("/api/billing", async function (req, res) {
     res.status(201).json({ ok: true, payment: doc });
   } catch (err) {
     console.error("Error creating billing record", err);
-    res
-      .status(500)
-      .json({ ok: false, error: "Failed to create billing record" });
+    res.status(500).json({ ok: false, error: "Failed to create billing record" });
   }
 });
-
 
 
 app.get("/api/maintenance", async function (req, res) {
@@ -197,9 +311,7 @@ app.get("/api/maintenance", async function (req, res) {
     res.json({ ok: true, requests: data });
   } catch (err) {
     console.error("Error fetching maintenance requests", err);
-    res
-      .status(500)
-      .json({ ok: false, error: "Failed to load maintenance requests" });
+    res.status(500).json({ ok: false, error: "Failed to load maintenance requests" });
   }
 });
 
@@ -229,12 +341,9 @@ app.post("/api/maintenance", async function (req, res) {
     res.status(201).json({ ok: true, request: doc });
   } catch (err) {
     console.error("Error creating maintenance request", err);
-    res
-      .status(500)
-      .json({ ok: false, error: "Failed to create maintenance request" });
+    res.status(500).json({ ok: false, error: "Failed to create maintenance request" });
   }
 });
-
 
 
 app.get("/api/residents", async function (req, res) {
@@ -312,7 +421,6 @@ app.delete("/api/residents/:id", async function (req, res) {
     res.status(500).json({ ok: false, error: "Failed to delete resident" });
   }
 });
-
 
 
 app.get("/api/rooms", async function (req, res) {
@@ -409,13 +517,10 @@ app.post("/api/rooms/:id/checkout", async function (req, res) {
   }
 });
 
-
-
+// Root
 app.get("/", function (req, res) {
   res.send("Hostel Management API with MongoDB is running");
 });
-
-
 
 var PORT = process.env.PORT || 5000;
 app.listen(PORT, function () {

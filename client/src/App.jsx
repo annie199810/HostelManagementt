@@ -1,61 +1,33 @@
 
-import React, { useState } from "react";
+import React, { Suspense } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import ProtectedRoute from "./auth/ProtectedRoute";
+import LoginPage from "./components/LoginPage";
+import RegisterPage from "./components/RegisterPage";
 
-import Sidebar from "./components/Sidebar";
-import Topbar from "./components/Topbar";
 
-import DashboardPage from "./pages/DashboardPage.jsx";
-import RoomsPage from "./pages/RoomsPage.jsx";
-import ResidentsPage from "./pages/ResidentsPage.jsx";
-import MaintenancePage from "./pages/MaintenancePage.jsx";
-import BillingPage from "./pages/BillingPage.jsx";
-import ReportsPage from "./pages/ReportsPage.jsx";
-import UserManagementPage from "./pages/UserManagementPage.jsx";
-
-const PAGES = {
-  dashboard: { title: "Dashboard", component: DashboardPage },
-  rooms: { title: "Room Management", component: RoomsPage },
-  residents: { title: "Residents", component: ResidentsPage },
-  maintenance: { title: "Maintenance", component: MaintenancePage },
-  billing: { title: "Billing & Payments", component: BillingPage },
-  reports: { title: "Financial Reports", component: ReportsPage },
-  users: { title: "User Management", component: UserManagementPage },
-};
+import DashboardLayout from "./pages/DashboardPage"; 
 
 export default function App() {
-  const [collapsed, setCollapsed] = useState(false);
-  const [activePage, setActivePage] = useState("dashboard");
-
-  const pageConfig = PAGES[activePage] || PAGES.dashboard;
-  const CurrentPage = pageConfig.component;
-
-  console.log("Rendering page:", activePage);
-
   return (
-    <div className="flex h-screen bg-gray-50 text-slate-800 overflow-hidden">
-     
-      <Sidebar
-        collapsed={collapsed}
-        active={activePage}
-        onToggle={() => setCollapsed((v) => !v)}
-        onSelect={(key) => {
-          console.log("Sidebar clicked:", key);
-          setActivePage(key);
-        }}
-      />
+    <Suspense fallback={<div className="h-screen flex items-center justify-center">Loading...</div>}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
-      
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar
-          title={pageConfig.title}
-          onToggle={() => setCollapsed((v) => !v)}
+        
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout />
+            </ProtectedRoute>
+          }
         />
 
-       
-        <div className="flex-1 overflow-auto">
-          <CurrentPage />
-        </div>
-      </div>
-    </div>
+        
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
