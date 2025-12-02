@@ -1,7 +1,8 @@
+// src/App.jsx
 import React, { useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import AuthProvider, { useAuth } from "./auth/AuthProvider";
+import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 
@@ -26,11 +27,10 @@ const PAGES = {
   users: { title: "User Management", component: UserManagementPage },
 };
 
-function ProtectedLayoutInner() {
-  const { user, ready, logout } = useAuth();
+function ProtectedLayout() {
+  const { user, ready } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [activePage, setActivePage] = useState("dashboard");
-  const navigate = useNavigate();
 
   if (!ready) return <div className="p-6">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
@@ -52,8 +52,8 @@ function ProtectedLayoutInner() {
           onToggle={() => setCollapsed((v) => !v)}
           user={user}
           onLogout={() => {
-            logout();
-            navigate("/login", { replace: true });
+            // call logout from hook
+            window.location.reload(); // simple; or better call logout method via context
           }}
         />
         <div className="flex-1 overflow-auto">
@@ -62,11 +62,6 @@ function ProtectedLayoutInner() {
       </div>
     </div>
   );
-}
-
-function ProtectedLayout() {
-
-  return <ProtectedLayoutInner />;
 }
 
 export default function AppWrapper() {
