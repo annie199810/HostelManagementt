@@ -1,94 +1,114 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import StatusModal from "../components/StatusModal";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { register, user, ready, logout } = useAuth();
 
+  // form fields (shared)
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
 
-  // When opening register page → force clear login session
+  // modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState("info");
+  const [modalMessage, setModalMessage] = useState("");
+
+  // On mount: clear any login session (as you had)
   useEffect(() => {
     try { logout?.(); } catch (e) {}
     try { localStorage.removeItem("token"); } catch (e) {}
   }, []);
 
+  function openModal(type, message) {
+    setModalType(type || "info");
+    setModalMessage(message || "");
+    setModalOpen(true);
+  }
+  function closeModal() {
+    setModalOpen(false);
+  }
+
+  // Self-register (normal users) - DO NOT send role or allow client to set role
   async function handleSelfRegister(e) {
     e.preventDefault();
     setError("");
-    setSuccessMsg("");
     if (loading) return;
     setLoading(true);
 
     try {
-      // normal user registering (not admin create)
-      const res = await register(
-        { name, email, password },
-        { autoLogin: false }
-      );
+      const res = await register({ name, email, password }, { autoLogin: false });
 
+      // remove any token if register somehow set it
       if (localStorage.getItem("token")) {
         localStorage.removeItem("token");
       }
 
       if (res && res.ok) {
-        // After register → go to login page
-        navigate("/login", {
-          replace: true,
-          state: { justRegistered: true }, // you can show message in login if needed
-        });
+        openModal("success", "You have created an account successfully.");
+        setName("");
+        setEmail("");
+        setPassword("");
+
+        // close modal then redirect to login
+        setTimeout(() => {
+          closeModal();
+          navigate("/login", { replace: true, state: { justRegistered: true } });
+        }, 1400);
       } else {
-        setError(res?.error || "Registration failed");
+        const errMsg = res?.error || "Registration failed";
+        setError(errMsg);
+        openModal("error", errMsg);
       }
     } catch (err) {
-      setError(err?.message || "Registration failed");
+      const msg = err?.message || "Registration failed";
+      setError(msg);
+      openModal("error", msg);
     } finally {
       setLoading(false);
     }
   }
 
+  // Admin: create user (calls /api/users). Admin decides role (Staff or Admin)
   async function createUserAsAdmin(e) {
     e.preventDefault();
     setError("");
-    setSuccessMsg("");
     if (loading) return;
     setLoading(true);
 
     try {
       const token = localStorage.getItem("token") || "";
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/users`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: token ? `Bearer ${token}` : "",
-          },
-          body: JSON.stringify({ name, email, password }),
-        }
-      );
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        body: JSON.stringify({ name, email, password }), // admin may add role if you want
+      });
 
       const data = await res.json();
       if (!res.ok) throw data;
 
-      setSuccessMsg("User created successfully.");
+      openModal("success", "User created successfully.");
       setName("");
       setEmail("");
       setPassword("");
     } catch (err) {
-      setError(err?.error || err?.message || "Failed to create user");
+      const msg = err?.error || err?.message || "Failed to create user";
+      setError(msg);
+      openModal("error", msg);
     } finally {
       setLoading(false);
     }
   }
 
-  // Wait for auth context
+  // While auth context initializes
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900/20">
@@ -97,39 +117,28 @@ export default function RegisterPage() {
     );
   }
 
-  // If logged in and NOT admin → block register
-  if (user && user.role !== "Administrator") {
+  // If logged in but not admin -> block registration creation (for admin-only features only)
+  if (user && user.role && user.role !== "Admin" && user.role !== "Administrator") {
     return (
       <div
-        className="min-h-screen flex items-center justify-center px-4 relative"
+        className="min-h-screen flex items-center justify-center px-4"
         style={{
-          backgroundImage:
-            "linear-gradient(180deg, rgba(8,15,30,0.28), rgba(6,10,24,0.36)), url('/hostel-bg.png')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
+          backgroundImage: "linear-gradient(to bottom right, #6366F1, #4F46E5)",
         }}
       >
-        <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
         <div className="relative w-full max-w-md z-10">
-          <div className="bg-white/8 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl p-8 text-center text-white/90">
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
             <h2 className="text-lg font-semibold mb-3">You're already signed in</h2>
-            <p className="text-sm text-white/80 mb-6">
-              Logged in as <strong>{user.name}</strong> ({user.role}).  
-              To register new account, logout first.
+            <p className="text-sm text-gray-700 mb-6">
+              Logged in as <strong>{user.name}</strong> ({user.role}). To register new account, logout first.
             </p>
 
             <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => navigate("/")}
-                className="px-4 py-2 rounded-md bg-indigo-600 text-white"
-              >
+              <button onClick={() => navigate("/")} className="px-4 py-2 rounded-md bg-indigo-600 text-white">
                 Go to dashboard
               </button>
 
-              <button
-                onClick={() => logout()}
-                className="px-4 py-2 rounded-md bg-white/10 text-white"
-              >
+              <button onClick={() => logout()} className="px-4 py-2 rounded-md bg-gray-100">
                 Logout
               </button>
             </div>
@@ -139,189 +148,161 @@ export default function RegisterPage() {
     );
   }
 
-  // If admin → admin create user page
-  if (user && user.role === "Administrator") {
+  // If Admin -> show admin create user form
+  if (user && (user.role === "Admin" || user.role === "Administrator")) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center px-4 relative"
+        className="min-h-screen flex items-center justify-center px-4"
         style={{
-          backgroundImage:
-            "linear-gradient(180deg, rgba(8,15,30,0.28), rgba(6,10,24,0.36)), url('/hostel-bg.png')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
+          backgroundImage: "linear-gradient(to bottom right, #6366F1, #4F46E5)",
         }}
       >
-        <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
         <div className="relative w-full max-w-md z-10">
-          <div className="bg-white/8 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-            <div className="p-6 sm:p-8">
-              <h1 className="text-center text-xl font-semibold text-white/95">
-                Create user (Admin)
-              </h1>
+          <div className="bg-white rounded-2xl shadow-xl p-8 overflow-hidden">
+            <h1 className="text-center text-xl font-semibold text-gray-800">Create user (Admin)</h1>
 
-              <form onSubmit={createUserAsAdmin} className="mt-6 space-y-4">
-                <div>
-                  <label className="block text-sm text-white/80 mb-2">
-                    Full name
-                  </label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    className="w-full px-4 py-2 rounded-lg bg-white/18 border border-white/12 text-white"
-                    placeholder="John Doe"
-                  />
-                </div>
+            <form onSubmit={createUserAsAdmin} className="mt-6 space-y-4" autoComplete="off">
+              {/* hidden fields to prevent browser autofill */}
+              <input type="text" name="fakeusernameremembered" style={{ display: "none" }} />
+              <input type="password" name="fakepasswordremembered" style={{ display: "none" }} />
 
-                <div>
-                  <label className="block text-sm text-white/80 mb-2">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="w-full px-4 py-2 rounded-lg bg-white/18 border border-white/12 text-white"
-                    placeholder="user@example.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-white/80 mb-2">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="w-full px-4 py-2 rounded-lg bg-white/18 border border-white/12 text-white"
-                    placeholder="Choose password"
-                  />
-                </div>
-
-                {error && <div className="text-sm text-rose-400">{error}</div>}
-                {successMsg && (
-                  <div className="text-sm text-emerald-300">{successMsg}</div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-indigo-600 text-white"
-                >
-                  {loading ? "Creating…" : "Create user"}
-                </button>
-
-                <div className="text-center text-sm text-white/80">
-                  Or{" "}
-                  <button
-                    onClick={() => navigate("/")}
-                    className="text-indigo-200 hover:underline"
-                  >
-                    return to dashboard
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <div className="px-6 py-3 bg-white/6 border-t border-white/8 text-center text-xs text-white/70">
-              Admin: creating a new user will not log them in automatically.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Normal user self-registration
-  return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4 relative"
-      style={{
-        backgroundImage:
-          "linear-gradient(180deg, rgba(8,15,30,0.28), rgba(6,10,24,0.36)), url('/hostel-bg.png')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-      }}
-    >
-      <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
-
-      <div className="relative w-full max-w-md z-10">
-        <div className="bg-white/8 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-          <div className="p-6 sm:p-8">
-            <h1 className="text-center text-xl font-semibold text-white/95">
-              Create an account
-            </h1>
-
-            <form onSubmit={handleSelfRegister} className="mt-6 space-y-4">
               <div>
-                <label className="block text-sm text-white/80 mb-2">Full name</label>
+                <label className="block text-sm text-gray-700 mb-1">Full name</label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="w-full px-4 py-2 rounded-lg bg-white/18 border border-white/12 text-white"
-                  placeholder="Your full name"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-50"
+                  placeholder="John Doe"
+                  autoComplete="name"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-white/80 mb-2">Email</label>
+                <label className="block text-sm text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-2 rounded-lg bg-white/18 border border-white/12 text-white"
-                  placeholder="you@hostel.com"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-50"
+                  placeholder="user@example.com"
+                  autoComplete="email"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-white/80 mb-2">Password</label>
+                <label className="block text-sm text-gray-700 mb-1">Password</label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-50"
+                  placeholder="Choose password"
+                  autoComplete="new-password"
                   minLength={6}
-                  className="w-full px-4 py-2 rounded-lg bg-white/18 border border-white/12 text-white"
-                  placeholder="Choose a password"
                 />
               </div>
 
-              {error && <div className="text-sm text-rose-400">{error}</div>}
-              {successMsg && (
-                <div className="text-sm text-emerald-300">{successMsg}</div>
-              )}
+              {error && <div className="text-sm text-red-600">{error}</div>}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-indigo-600 text-white"
-              >
-                {loading ? "Creating…" : "Create account"}
+              <button type="submit" disabled={loading} className="w-full px-4 py-3 rounded-lg bg-indigo-600 text-white">
+                {loading ? "Creating…" : "Create user"}
               </button>
 
-              <div className="text-center text-sm text-white/80">
-                Already registered?{" "}
-                <button
-                  onClick={() => navigate("/login")}
-                  className="text-indigo-200 hover:underline"
-                >
-                  Sign in
+              <div className="text-center text-sm text-gray-700">
+                Or{" "}
+                <button onClick={() => navigate("/")} className="text-indigo-600 hover:underline">
+                  return to dashboard
                 </button>
               </div>
             </form>
+
+            <div className="text-center text-xs mt-4 text-gray-500">Admin: creating a new user will not log them in automatically.</div>
           </div>
 
-          <div className="px-6 py-3 bg-white/6 border-t border-white/8 text-center text-xs text-white/70">
-            By registering you agree to our Terms.
-          </div>
+          <StatusModal open={modalOpen} type={modalType} message={modalMessage} onClose={closeModal} confirmLabel="OK" />
         </div>
       </div>
+    );
+  }
+
+  // Normal self-registration form
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center px-4"
+      style={{
+        backgroundImage: "linear-gradient(to bottom right, #6366F1, #4F46E5)",
+      }}
+    >
+      <div className="relative w-full max-w-md z-10">
+        <div className="bg-white rounded-2xl shadow-xl p-8 overflow-hidden">
+          <h1 className="text-center text-xl font-semibold text-gray-800">Create an account</h1>
+
+          <form onSubmit={handleSelfRegister} className="mt-6 space-y-4" autoComplete="off">
+            {/* hidden fields to prevent browser autofill */}
+            <input type="text" name="fakeusernameremembered" style={{ display: "none" }} />
+            <input type="password" name="fakepasswordremembered" style={{ display: "none" }} />
+
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Full name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-50"
+                placeholder="Your full name"
+                autoComplete="name"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-50"
+                placeholder="you@hostel.com"
+                autoComplete="email"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-gray-50"
+                placeholder="Choose a password"
+                autoComplete="new-password"
+              />
+            </div>
+
+            {error && <div className="text-sm text-red-600">{error}</div>}
+
+            <button type="submit" disabled={loading} className="w-full px-4 py-3 rounded-lg bg-indigo-600 text-white">
+              {loading ? "Creating…" : "Create account"}
+            </button>
+
+            <div className="text-center mt-3 text-sm text-gray-700">
+              Already registered?{" "}
+              <button onClick={() => navigate("/login")} className="text-indigo-600 hover:underline">
+                Sign in
+              </button>
+            </div>
+          </form>
+
+          <div className="text-center text-xs mt-4 text-gray-500">By registering you agree to our Terms.</div>
+        </div>
+      </div>
+
+      <StatusModal open={modalOpen} type={modalType} message={modalMessage} onClose={closeModal} confirmLabel="OK" />
     </div>
   );
 }

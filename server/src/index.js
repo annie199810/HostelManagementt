@@ -1,3 +1,4 @@
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -14,9 +15,9 @@ const User = require("./models/User");
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const verifyToken = require("./middleware/auth");
+const requireRole = require("./middleware/requireRole");
 
 const app = express();
-
 
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 
@@ -24,15 +25,20 @@ const corsOptions = {
   origin: [
     CLIENT_ORIGIN,
     "http://127.0.0.1:5173",
+    "http://localhost:5173",
     "https://hostelmanagementttt.netlify.app",
   ],
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+  allowedHeaders: "Content-Type,Authorization",
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.options("*", cors(corsOptions));
 
+app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret_key";
 
@@ -55,7 +61,6 @@ function safeUser(u) {
   delete obj.password;
   return obj;
 }
-
 
 async function removeFromRoom(roomNumber, residentId) {
   if (!roomNumber) return;
@@ -96,7 +101,6 @@ async function addToRoom(roomNumber, resident) {
   await room.save();
 }
 
-
 async function ensureDefaultAdmin() {
   try {
     const email = "admin@hostel.com";
@@ -112,9 +116,32 @@ async function ensureDefaultAdmin() {
         status: "Active",
       });
       console.log("Seeded default admin user:", email);
+    } else {
+      console.log("Admin already exists:", email);
     }
   } catch (err) {
     console.error("ensureDefaultAdmin error:", err);
+  }
+}
+
+
+async function ensureDemoStaff() {
+  try {
+    const email = "staff@hostel.com";
+    const existing = await User.findOne({ email });
+    if (!existing) {
+      const hashed = await hashPassword("staff1234");
+      await User.create({
+        name: "Demo Staff",
+        email,
+        password: hashed,
+        role: "Staff",
+        status: "Active",
+      });
+      console.log("Seeded demo staff:", email);
+    }
+  } catch (e) {
+    console.error("ensureDemoStaff error:", e);
   }
 }
 
@@ -123,13 +150,14 @@ mongoose
   .then(async () => {
     console.log("MongoDB Connected");
     await ensureDefaultAdmin();
+    await ensureDemoStaff();
   })
   .catch((err) => console.error("MongoDB Error:", err));
 
 
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { name, email, password, role = "Staff" } = req.body || {};
+    const { name, email, password } = req.body || {};
 
     if (!name || !email || !password) {
       return res.status(400).json({ ok: false, error: "Missing fields" });
@@ -143,11 +171,13 @@ app.post("/api/auth/register", async (req, res) => {
     }
 
     const hashed = await hashPassword(password);
+
+   
     const user = await User.create({
       name,
       email: email.toLowerCase(),
       password: hashed,
-      role,
+      role: "Resident", 
       status: "Active",
     });
 
@@ -162,7 +192,9 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
+
 app.use("/api/auth", authRoutes);
+
 
 app.get("/api/me", verifyToken, async (req, res) => {
   try {
@@ -173,9 +205,12 @@ app.get("/api/me", verifyToken, async (req, res) => {
     return res.json({ ok: true, user: safeUser(user) });
   } catch (err) {
     console.error("GET /api/me error:", err);
-    return res.status(500).json({ ok: false, error: "Failed to load profile" });
+    return res
+      .status(500)
+      .json({ ok: false, error: "Failed to load profile" });
   }
 });
+
 
 app.use("/api/users", userRoutes);
 
@@ -192,6 +227,7 @@ app.post("/api/payments", async (req, res) => {
   }
 });
 
+
 app.get("/api/billing", verifyToken, async (req, res) => {
   try {
     const data = await Billing.find().sort({ createdAt: -1 });
@@ -204,7 +240,8 @@ app.get("/api/billing", verifyToken, async (req, res) => {
   }
 });
 
-app.post("/api/billing", verifyToken, async (req, res) => {
+
+app.post("/api/billing", verifyToken, requireRole("Admin", "Staff"), async (req, res) => {
   try {
     const { residentName, roomNumber, amount, month } = req.body || {};
 
@@ -234,7 +271,8 @@ app.post("/api/billing", verifyToken, async (req, res) => {
   }
 });
 
-app.patch("/api/billing/:id/pay", verifyToken, async (req, res) => {
+
+app.patch("/api/billing/:id/pay", verifyToken, requireRole("Admin", "Staff"), async (req, res) => {
   try {
     const id = req.params.id;
     const updated = await Billing.findByIdAndUpdate(
@@ -257,6 +295,59 @@ app.patch("/api/billing/:id/pay", verifyToken, async (req, res) => {
   }
 });
 
+app.put("/api/billing/:id", verifyToken, requireRole("Admin", "Staff"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const body = req.body || {};
+
+    const update = {};
+    if (body.residentName != null) update.residentName = body.residentName;
+    if (body.roomNumber != null) update.roomNumber = body.roomNumber;
+    if (body.amount != null) update.amount = body.amount;
+    if (body.month != null) update.month = body.month;
+    if (body.status != null) update.status = body.status;
+    if (body.method != null) update.method = body.method;
+    if (body.dueDate != null) update.dueDate = body.dueDate;
+    if (body.paidOn != null) update.paidOn = body.paidOn;
+    if (body.notes != null) update.notes = body.notes;
+    if (body.invoiceNo != null) update.invoiceNo = body.invoiceNo;
+
+    const doc = await Billing.findByIdAndUpdate(id, update, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!doc) {
+      return res.status(404).json({ ok: false, error: "Payment not found" });
+    }
+
+    return res.json({ ok: true, payment: doc });
+  } catch (err) {
+    console.error("PUT /api/billing/:id error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: "Failed to update payment" });
+  }
+});
+
+app.delete("/api/billing/:id", verifyToken, requireRole("Admin", "Staff"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const doc = await Billing.findByIdAndDelete(id);
+
+    if (!doc) {
+      return res.status(404).json({ ok: false, error: "Payment not found" });
+    }
+
+    return res.json({ ok: true, message: "Payment deleted successfully" });
+  } catch (err) {
+    console.error("DELETE /api/billing/:id error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: "Failed to delete payment" });
+  }
+});
+
 
 app.get("/api/maintenance", verifyToken, async (req, res) => {
   try {
@@ -269,6 +360,7 @@ app.get("/api/maintenance", verifyToken, async (req, res) => {
       .json({ ok: false, error: "Failed to load maintenance" });
   }
 });
+
 
 app.post("/api/maintenance", verifyToken, async (req, res) => {
   try {
@@ -307,7 +399,8 @@ app.post("/api/maintenance", verifyToken, async (req, res) => {
   }
 });
 
-app.put("/api/maintenance/:id", verifyToken, async (req, res) => {
+
+app.put("/api/maintenance/:id", verifyToken, requireRole("Admin", "Staff"), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -347,7 +440,7 @@ app.put("/api/maintenance/:id", verifyToken, async (req, res) => {
   }
 });
 
-app.delete("/api/maintenance/:id", verifyToken, async (req, res) => {
+app.delete("/api/maintenance/:id", verifyToken, requireRole("Admin", "Staff"), async (req, res) => {
   try {
     const { id } = req.params;
     const doc = await Maintenance.findByIdAndDelete(id);
@@ -365,7 +458,7 @@ app.delete("/api/maintenance/:id", verifyToken, async (req, res) => {
   }
 });
 
-app.post("/api/maintenance/:id/status", verifyToken, async (req, res) => {
+app.post("/api/maintenance/:id/status", verifyToken, requireRole("Admin", "Staff"), async (req, res) => {
   try {
     const { id } = req.params;
     const { status = "Open" } = req.body || {};
@@ -440,180 +533,10 @@ app.post("/api/residents", verifyToken, async (req, res) => {
   }
 });
 
-app.put("/api/residents/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const body = req.body || {};
-
-    const existing = await Resident.findById(id);
-    if (!existing) {
-      return res.status(404).json({ ok: false, error: "Resident not found" });
-    }
-
-    const update = {};
-    if (body.name != null) update.name = body.name;
-    if (body.roomNumber != null) update.roomNumber = body.roomNumber;
-    if (body.phone != null) update.phone = body.phone;
-    if (body.status != null) update.status = body.status;
-
-    const updated = await Resident.findByIdAndUpdate(id, update, {
-      new: true,
-      runValidators: true,
-    });
-
-    try {
-      await removeFromRoom(existing.roomNumber, id);
-      if ((updated.status || "active") === "active" && updated.roomNumber) {
-        await addToRoom(updated.roomNumber, updated);
-      }
-    } catch (e) {
-      console.warn("PUT /api/residents/:id room sync warning:", e);
-    }
-
-    return res.json({
-      ok: true,
-      resident: updated,
-      message: "Resident updated successfully",
-    });
-  } catch (err) {
-    console.error("PUT /api/residents/:id error:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: "Failed to update resident" });
-  }
-});
-
-app.delete("/api/residents/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const existing = await Resident.findById(id);
-    if (!existing) {
-      return res.status(404).json({ ok: false, error: "Resident not found" });
-    }
-
-    await Resident.findByIdAndDelete(id);
-
-    try {
-      await removeFromRoom(existing.roomNumber, id);
-    } catch (e) {
-      console.warn("DELETE /api/residents/:id room sync warning:", e);
-    }
-
-    return res.json({
-      ok: true,
-      message: "Resident deleted successfully",
-    });
-  } catch (err) {
-    console.error("DELETE /api/residents/:id error:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: "Failed to delete resident" });
-  }
-});
 
 
-app.get("/api/rooms", async (req, res) => {
-  try {
-    const data = await Room.find().sort({ number: 1 });
-    return res.json({ ok: true, rooms: data });
-  } catch (err) {
-    console.error("GET /api/rooms error:", err);
-    return res.status(500).json({ ok: false, error: "Failed to load rooms" });
-  }
-});
-
-app.post("/api/rooms", verifyToken, async (req, res) => {
-  try {
-    const { number, type, status, pricePerMonth } = req.body || {};
-
-    if (!number || pricePerMonth == null) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Room number and price are required" });
-    }
-
-    const existing = await Room.findOne({ number: String(number) });
-    if (existing) {
-      return res
-        .status(409)
-        .json({ ok: false, error: "A room with this number already exists" });
-    }
-
-    const room = await Room.create({
-      number: String(number),
-      type: type || "single",
-      status: status || "available",
-      pricePerMonth: Number(pricePerMonth),
-      occupants: [],
-    });
-
-    return res.status(201).json({ ok: true, room });
-  } catch (err) {
-    console.error("POST /api/rooms error:", err);
-    return res.status(500).json({ ok: false, error: "Failed to create room" });
-  }
-});
-
-app.put("/api/rooms/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { number, type, status, pricePerMonth } = req.body || {};
-
-    const update = {};
-    if (number != null) update.number = String(number);
-    if (type != null) update.type = type;
-    if (status != null) update.status = status;
-    if (pricePerMonth != null) update.pricePerMonth = Number(pricePerMonth);
-
-    if (number != null) {
-      const clash = await Room.findOne({
-        number: String(number),
-        _id: { $ne: id },
-      });
-      if (clash) {
-        return res.status(409).json({
-          ok: false,
-          error: "Another room with this number already exists",
-        });
-      }
-    }
-
-    const room = await Room.findByIdAndUpdate(id, update, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!room) {
-      return res.status(404).json({ ok: false, error: "Room not found" });
-    }
-
-    return res.json({ ok: true, room });
-  } catch (err) {
-    console.error("PUT /api/rooms/:id error:", err);
-    return res.status(500).json({ ok: false, error: "Failed to update room" });
-  }
-});
-
-app.delete("/api/rooms/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const room = await Room.findByIdAndDelete(id);
-
-    if (!room) {
-      return res.status(404).json({ ok: false, error: "Room not found" });
-    }
-
-    return res.json({ ok: true, message: "Room deleted successfully" });
-  } catch (err) {
-    console.error("DELETE /api/rooms/:id error:", err);
-    return res.status(500).json({ ok: false, error: "Failed to delete room" });
-  }
-});
-
-
+app.get("/wake", (req, res) => res.send("awake"));
 app.get("/", (req, res) => res.send("Hostel API Running"));
-
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
